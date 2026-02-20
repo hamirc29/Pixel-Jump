@@ -344,6 +344,7 @@ class Game {
         this.enemies = [];
         this.projectiles = [];
         this.particles = new ParticleSystem();
+        this.remotePlayer = null;
 
         this.ui.power.style.opacity = 0;
         this.ui.story.style.opacity = 1;
@@ -548,6 +549,15 @@ class Game {
         if (this.ui.menusWrapper) {
             this.ui.menusWrapper.style.display = 'block';
             this.ui.menusWrapper.style.opacity = 1;
+        }
+
+        if (this.state.multiplayer) {
+            if (this.state.isHost) {
+                this.ui.mpStartBtn.style.display = 'block';
+                this.ui.mpStartBtn.innerText = "PLAY AGAIN";
+            } else {
+                this.ui.mpStatus.innerText = "WAITING FOR HOST TO RESTART...";
+            }
         }
 
         this.ui.hud.style.opacity = 0;
