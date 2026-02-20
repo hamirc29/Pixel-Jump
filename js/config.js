@@ -48,5 +48,5 @@ const STORY = [
     { h: 1000, t: "SYSTEM: Why climb? Gravity is the only law." },
     { h: 2500, t: "SYSTEM: You are exceeding recommended parameters." },
     { h: 5000, t: "SYSTEM: Safety protocols disengaged." },
-    { h: 8000, t: "SYSTEM: The lonely pixel is not so lonely anymore." }
+    { h: 8000, t: "SYSTEM: Pixel Jump: The next level." }
 ];

@@ -19,7 +19,7 @@ class Player extends Entity {
         this.color = this.skin.color;
         this.w = 26;
         this.h = 26;
-        this.color = SKINS[this.skinIndex] ? SKINS[this.skinIndex].color : "#00ffcc";
+        this.color = SKINS[skinIndex] ? SKINS[skinIndex].color : "#00ffcc";
         this.isDead = false;
         this.grounded = false;
         this.coyote = 0;
