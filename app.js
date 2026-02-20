@@ -137,10 +137,16 @@ class Game {
                 this.ui.mpStatus.innerText = "GENERATING CODE...";
                 this.ui.mpStatus.style.color = "#ffaa00";
 
-                let code = await window.network.host();
-                this.ui.mpHostCode.innerText = code;
-                this.ui.mpStatus.innerText = "WAITING FOR GUEST...";
-                this.ui.mpStatus.style.color = "#00ffaa";
+                try {
+                    let code = await window.network.host();
+                    this.ui.mpHostCode.innerText = code;
+                    this.ui.mpStatus.innerText = "WAITING FOR GUEST...";
+                    this.ui.mpStatus.style.color = "#00ffaa";
+                } catch (err) {
+                    this.ui.mpStatus.innerText = "HOST FAILED — TRY AGAIN";
+                    this.ui.mpStatus.style.color = "#ff3300";
+                    this.ui.mpHostBtn.disabled = false;
+                }
             };
 
             this.ui.mpJoinBtn.onclick = async () => {
@@ -148,7 +154,14 @@ class Game {
                 if (code.length === 6) {
                     this.ui.mpJoinBtn.disabled = true;
                     this.ui.mpStatus.innerText = "CONNECTING...";
-                    await window.network.join(code);
+                    this.ui.mpStatus.style.color = "#ffaa00";
+                    try {
+                        await window.network.join(code);
+                    } catch (err) {
+                        this.ui.mpStatus.innerText = "CONNECTION FAILED — TRY AGAIN";
+                        this.ui.mpStatus.style.color = "#ff3300";
+                        this.ui.mpJoinBtn.disabled = false;
+                    }
                 } else {
                     this.ui.mpStatus.innerText = "INVALID CODE";
                     this.ui.mpStatus.style.color = "#ff3300";
@@ -189,6 +202,19 @@ class Game {
                 this.ui.mpStatus.innerText = "DISCONNECTED";
                 this.ui.mpStatus.style.color = "#ff3300";
                 this.ui.mpStartBtn.style.display = 'none';
+                this.ui.mpHostBtn.disabled = false;
+                this.ui.mpJoinBtn.disabled = false;
+            };
+
+            window.network.onError = (err) => {
+                let msg = "CONNECTION FAILED";
+                if (err.type === 'connection-timeout') {
+                    msg = "TIMED OUT — CODE MAY BE INVALID";
+                } else if (err.type === 'peer-unavailable') {
+                    msg = "CODE NOT FOUND — CHECK & RETRY";
+                }
+                this.ui.mpStatus.innerText = msg;
+                this.ui.mpStatus.style.color = "#ff3300";
                 this.ui.mpHostBtn.disabled = false;
                 this.ui.mpJoinBtn.disabled = false;
             };
