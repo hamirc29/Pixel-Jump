@@ -11,6 +11,7 @@ class NetworkManager {
         this.onData = null;
         this.onDisconnected = null;
         this.onError = null;
+        this.onStatus = null;
     }
 
     generateCode() {
@@ -22,16 +23,36 @@ class NetworkManager {
         return code;
     }
 
+    getIceServers() {
+        return [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            // Free TURN relay fallback for restrictive NATs
+            {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
+        ];
+    }
+
     init(id = null) {
         return new Promise((resolve, reject) => {
             this.peer = new Peer(id, {
                 debug: 2,
                 config: {
-                    'iceServers': [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' }
-                    ]
+                    'iceServers': this.getIceServers()
                 }
             });
 
@@ -82,24 +103,69 @@ class NetworkManager {
         this.isHost = false;
         this.friendId = hostCode.toUpperCase();
         await this.init();
-        this.conn = this.peer.connect(this.friendId, { reliable: true });
-        this.setupConnection();
 
-        // Timeout: if connection doesn't open within 10 seconds, fail gracefully
-        this.connectionTimeout = setTimeout(() => {
-            if (!this.conn || !this.conn.open) {
-                const err = new Error("Connection timed out. The code may be invalid or the host is unreachable.");
-                err.type = 'connection-timeout';
-                console.error("Connection timeout:", err.message);
-                if (this.onError) this.onError(err);
-                this.disconnect();
+        const maxAttempts = 3;
+        const attemptTimeout = 5000; // 5 seconds per attempt
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                await this.attemptConnect(attempt, attemptTimeout);
+                return; // Connected successfully
+            } catch (err) {
+                if (attempt < maxAttempts) {
+                    // Clean up failed connection before retrying
+                    if (this.conn) {
+                        try { this.conn.close(); } catch (e) { }
+                        this.conn = null;
+                    }
+                    if (this.onStatus) this.onStatus(`RETRYING... (${attempt + 1}/${maxAttempts})`);
+                } else {
+                    // All attempts exhausted
+                    const finalErr = new Error("Could not connect after " + maxAttempts + " attempts.");
+                    finalErr.type = 'connection-timeout';
+                    if (this.onError) this.onError(finalErr);
+                    this.disconnect();
+                }
             }
-        }, 10000);
+        }
+    }
+
+    attemptConnect(attempt, timeout) {
+        return new Promise((resolve, reject) => {
+            this.conn = this.peer.connect(this.friendId, { reliable: true });
+
+            const timer = setTimeout(() => {
+                reject(new Error(`Attempt ${attempt} timed out`));
+            }, timeout);
+
+            this.conn.on('open', () => {
+                clearTimeout(timer);
+                // Connection opened — set up remaining listeners
+                this.conn.on('data', (data) => {
+                    if (this.onData) this.onData(data);
+                });
+                this.conn.on('close', () => {
+                    this.conn = null;
+                    if (this.onDisconnected) this.onDisconnected();
+                });
+                this.conn.on('error', (err) => {
+                    console.error("Connection Error:", err);
+                    if (this.onError) this.onError(err);
+                });
+                if (this.onConnected) this.onConnected();
+                resolve();
+            });
+
+            this.conn.on('error', (err) => {
+                clearTimeout(timer);
+                reject(err);
+            });
+        });
     }
 
     setupConnection() {
+        // Used by host side when accepting incoming connections
         this.conn.on('open', () => {
-            // Clear any pending timeout since we connected successfully
             if (this.connectionTimeout) {
                 clearTimeout(this.connectionTimeout);
                 this.connectionTimeout = null;
@@ -134,7 +200,7 @@ class NetworkManager {
             this.connectionTimeout = null;
         }
         if (this.conn) {
-            this.conn.close();
+            try { this.conn.close(); } catch (e) { }
         }
         if (this.peer) {
             this.peer.destroy();

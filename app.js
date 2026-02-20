@@ -219,6 +219,11 @@ class Game {
                 this.ui.mpJoinBtn.disabled = false;
             };
 
+            window.network.onStatus = (msg) => {
+                this.ui.mpStatus.innerText = msg;
+                this.ui.mpStatus.style.color = "#ffaa00";
+            };
+
             // Two-finger swipe gesture for menu transition
             if (this.ui.menusWrapper) {
                 let touchStartX = 0;
