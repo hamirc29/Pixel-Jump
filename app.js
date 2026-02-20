@@ -226,11 +226,11 @@ class Game {
             this.startMultiplayerGame(data.seed);
         } else if (data.type === 'sync') {
             if (!this.remotePlayer) {
-                this.remotePlayer = new Player(data.x, data.y, data.skinIndex);
+                this.remotePlayer = new Player(data.x, data.y + this.state.score, data.skinIndex);
                 this.remotePlayer.name = this.remoteName || "GUEST";
             }
             this.remotePlayer.x = data.x;
-            this.remotePlayer.y = data.y;
+            this.remotePlayer.y = data.y + this.state.score;
             this.remotePlayer.vx = data.vx;
             this.remotePlayer.vy = data.vy;
             if (data.activePowerId) {
@@ -646,6 +646,14 @@ class Game {
 
         let event = this.player.update(dt, this.input, this.platforms, this.powerups);
 
+        // Invisible ceiling in multiplayer so the fast player doesn't go off screen
+        if (this.state.multiplayer && this.remotePlayer && !this.player.isDead && !this.remotePlayer.isDead) {
+            if (this.player.y < 0) {
+                this.player.y = 0;
+                if (this.player.vy < 0) this.player.vy = 0; // head bump
+            }
+        }
+
         // Environmental Hazards
         if (scoreMeters > 1000 && scoreMeters < 3000) {
             let wind = Math.sin(this.state.time * 0.05) * 0.3;
@@ -761,7 +769,7 @@ class Game {
             window.network.send({
                 type: 'sync',
                 x: this.player.x,
-                y: this.player.y,
+                y: this.player.y - this.state.score,
                 vx: this.player.vx,
                 vy: this.player.vy,
                 skinIndex: this.viewParams.skinIndex,
@@ -769,10 +777,15 @@ class Game {
             });
         }
 
-        // Camera follows dead player's partner if needed
+        // Camera follows dead player's partner if needed, or lowest player in co-op
         let targetY = this.player.y;
-        if (this.player.isDead && this.remotePlayer && !this.remotePlayer.isDead) {
-            targetY = this.remotePlayer.y;
+        if (this.state.multiplayer && this.remotePlayer) {
+            if (this.player.isDead && !this.remotePlayer.isDead) {
+                targetY = this.remotePlayer.y;
+            } else if (!this.player.isDead && !this.remotePlayer.isDead) {
+                // Both alive: camera follows the lowest player (highest Y coordinate)
+                targetY = Math.max(this.player.y, this.remotePlayer.y);
+            }
         }
 
         let threshold = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD;
@@ -780,7 +793,7 @@ class Game {
             let diff = threshold - targetY;
 
             if (!this.player.isDead) this.player.y += diff;
-            if (this.remotePlayer) this.remotePlayer.y += diff;
+            // remotePlayer Y is recalculated from world-space each sync frame
 
             this.state.score += diff;
             this.state.bgOffset += diff * 0.5;
