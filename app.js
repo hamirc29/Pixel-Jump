@@ -179,23 +179,34 @@ class Game {
             window.network.onConnected = () => {
                 this.ui.mpStatus.innerText = "CONNECTED!";
                 this.ui.mpStatus.style.color = "#00ffcc";
+
                 let name = this.ui.mpNameInput.value.trim() || 'Player';
-                window.network.send({ type: 'handshake', name: name });
 
                 if (window.network.isHost) {
                     this.state.isHost = true;
                     this.ui.mpStartBtn.style.display = 'block';
                 } else {
                     this.state.isHost = false;
-                    this.ui.mpStatus.innerText = "WAITING FOR HOST TO START...";
+                    this.ui.mpStatus.innerText = "SYNCHRONIZING...";
+
+                    // Handshake Retry Loop for Guest
+                    // Ensures the host DEFINITELY gets the name even if the first packet is lost
+                    if (this.handshakeInterval) clearInterval(this.handshakeInterval);
+                    this.handshakeInterval = setInterval(() => {
+                        console.log("MP: Sending Handshake...");
+                        window.network.send({ type: 'handshake', name: name });
+                    }, 1000);
+                    window.network.send({ type: 'handshake', name: name });
                 }
             };
 
             window.network.onData = (data) => {
+                if (data.type === 'ping') return; // Silence internal heartbeats
                 this.handleNetworkData(data);
             };
 
             window.network.onDisconnected = () => {
+                if (this.handshakeInterval) clearInterval(this.handshakeInterval);
                 if (this.state.running && this.state.multiplayer) {
                     this.die(true); // Disconnect kills
                 }
@@ -252,7 +263,16 @@ class Game {
 
     handleNetworkData(data) {
         if (data.type === 'handshake') {
+            console.log("MP: Received Handshake from", data.name);
             this.remoteName = data.name;
+            if (this.state.isHost) {
+                window.network.send({ type: 'handshake_ack' });
+            }
+        } else if (data.type === 'handshake_ack') {
+            console.log("MP: Received Handshake ACK");
+            if (this.handshakeInterval) clearInterval(this.handshakeInterval);
+            this.handshakeInterval = null;
+            this.ui.mpStatus.innerText = "READY TO START";
         } else if (data.type === 'start') {
             this.startMultiplayerGame(data.seed);
         } else if (data.type === 'sync') {
