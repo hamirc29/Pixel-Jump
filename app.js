@@ -137,16 +137,10 @@ class Game {
                 this.ui.mpStatus.innerText = "GENERATING CODE...";
                 this.ui.mpStatus.style.color = "#ffaa00";
 
-                try {
-                    let code = await window.network.host();
-                    this.ui.mpHostCode.innerText = code;
-                    this.ui.mpStatus.innerText = "WAITING FOR GUEST...";
-                    this.ui.mpStatus.style.color = "#00ffaa";
-                } catch (err) {
-                    this.ui.mpStatus.innerText = "HOST FAILED — TRY AGAIN";
-                    this.ui.mpStatus.style.color = "#ff3300";
-                    this.ui.mpHostBtn.disabled = false;
-                }
+                let code = await window.network.host();
+                this.ui.mpHostCode.innerText = code;
+                this.ui.mpStatus.innerText = "WAITING FOR GUEST...";
+                this.ui.mpStatus.style.color = "#00ffaa";
             };
 
             this.ui.mpJoinBtn.onclick = async () => {
@@ -154,14 +148,7 @@ class Game {
                 if (code.length === 6) {
                     this.ui.mpJoinBtn.disabled = true;
                     this.ui.mpStatus.innerText = "CONNECTING...";
-                    this.ui.mpStatus.style.color = "#ffaa00";
-                    try {
-                        await window.network.join(code);
-                    } catch (err) {
-                        this.ui.mpStatus.innerText = "CONNECTION FAILED — TRY AGAIN";
-                        this.ui.mpStatus.style.color = "#ff3300";
-                        this.ui.mpJoinBtn.disabled = false;
-                    }
+                    await window.network.join(code);
                 } else {
                     this.ui.mpStatus.innerText = "INVALID CODE";
                     this.ui.mpStatus.style.color = "#ff3300";
@@ -179,34 +166,23 @@ class Game {
             window.network.onConnected = () => {
                 this.ui.mpStatus.innerText = "CONNECTED!";
                 this.ui.mpStatus.style.color = "#00ffcc";
-
                 let name = this.ui.mpNameInput.value.trim() || 'Player';
+                window.network.send({ type: 'handshake', name: name });
 
                 if (window.network.isHost) {
                     this.state.isHost = true;
                     this.ui.mpStartBtn.style.display = 'block';
                 } else {
                     this.state.isHost = false;
-                    this.ui.mpStatus.innerText = "SYNCHRONIZING...";
-
-                    // Handshake Retry Loop for Guest
-                    // Ensures the host DEFINITELY gets the name even if the first packet is lost
-                    if (this.handshakeInterval) clearInterval(this.handshakeInterval);
-                    this.handshakeInterval = setInterval(() => {
-                        console.log("MP: Sending Handshake...");
-                        window.network.send({ type: 'handshake', name: name });
-                    }, 1000);
-                    window.network.send({ type: 'handshake', name: name });
+                    this.ui.mpStatus.innerText = "WAITING FOR HOST TO START...";
                 }
             };
 
             window.network.onData = (data) => {
-                if (data.type === 'ping') return; // Silence internal heartbeats
                 this.handleNetworkData(data);
             };
 
             window.network.onDisconnected = () => {
-                if (this.handshakeInterval) clearInterval(this.handshakeInterval);
                 if (this.state.running && this.state.multiplayer) {
                     this.die(true); // Disconnect kills
                 }
@@ -215,24 +191,6 @@ class Game {
                 this.ui.mpStartBtn.style.display = 'none';
                 this.ui.mpHostBtn.disabled = false;
                 this.ui.mpJoinBtn.disabled = false;
-            };
-
-            window.network.onError = (err) => {
-                let msg = "CONNECTION FAILED";
-                if (err.type === 'connection-timeout') {
-                    msg = "TIMED OUT — CODE MAY BE INVALID";
-                } else if (err.type === 'peer-unavailable') {
-                    msg = "CODE NOT FOUND — CHECK & RETRY";
-                }
-                this.ui.mpStatus.innerText = msg;
-                this.ui.mpStatus.style.color = "#ff3300";
-                this.ui.mpHostBtn.disabled = false;
-                this.ui.mpJoinBtn.disabled = false;
-            };
-
-            window.network.onStatus = (msg) => {
-                this.ui.mpStatus.innerText = msg;
-                this.ui.mpStatus.style.color = "#ffaa00";
             };
 
             // Two-finger swipe gesture for menu transition
@@ -263,16 +221,7 @@ class Game {
 
     handleNetworkData(data) {
         if (data.type === 'handshake') {
-            console.log("MP: Received Handshake from", data.name);
             this.remoteName = data.name;
-            if (this.state.isHost) {
-                window.network.send({ type: 'handshake_ack' });
-            }
-        } else if (data.type === 'handshake_ack') {
-            console.log("MP: Received Handshake ACK");
-            if (this.handshakeInterval) clearInterval(this.handshakeInterval);
-            this.handshakeInterval = null;
-            this.ui.mpStatus.innerText = "READY TO START";
         } else if (data.type === 'start') {
             this.startMultiplayerGame(data.seed);
         } else if (data.type === 'sync') {
