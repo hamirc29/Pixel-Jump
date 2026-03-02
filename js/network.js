@@ -21,7 +21,7 @@ class NetworkManager {
 
     generateCode() {
         // Exclude 0, O, I, 1, L to avoid visual confusion
-        const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
         let code = '';
         for (let i = 0; i < 6; i++) {
             code += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
@@ -68,11 +68,22 @@ class NetworkManager {
 
             this.peer.on('connection', (connection) => {
                 console.log("PeerJS: Incoming connection from", connection.peer);
-                if (this.isHost && !this.conn) {
-                    this.conn = connection;
-                    this.setupConnection();
+                if (this.isHost) {
+                    // Clean up stale connections if they dropped before completing
+                    if (this.conn && !this.conn.open) {
+                        console.log("PeerJS: Clearing stale connection before accepting new one.");
+                        this.conn = null;
+                    }
+
+                    if (!this.conn) {
+                        this.conn = connection;
+                        this.setupConnection();
+                    } else {
+                        console.log("PeerJS: Rejecting connection (already actively connected)");
+                        connection.on('open', () => connection.close());
+                    }
                 } else {
-                    console.log("PeerJS: Rejecting connection (already connected or not host)");
+                    console.log("PeerJS: Rejecting connection (not host)");
                     connection.on('open', () => connection.close());
                 }
             });
@@ -127,7 +138,7 @@ class NetworkManager {
         await this.init();
 
         const maxAttempts = 3;
-        const attemptTimeout = 12000; // Increased timeout for slower network negotiation
+        const attemptTimeout = 20000; // Increased timeout for slower network negotiation
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
@@ -222,6 +233,7 @@ class NetworkManager {
         this.conn.on('close', () => {
             console.log("PeerJS: Connection closed");
             this.stopHeartbeat();
+            this.conn = null;
             if (this.onDisconnected) this.onDisconnected();
         });
     }
@@ -235,6 +247,7 @@ class NetworkManager {
 
         this.conn.on('close', () => {
             this.stopHeartbeat();
+            this.conn = null;
             if (this.onDisconnected) this.onDisconnected();
         });
     }
@@ -262,7 +275,7 @@ class NetworkManager {
                 err.type = "connection-timeout";
                 this.onError(err);
             }
-        }, 8000);
+        }, 15000);
     }
 
     stopHeartbeat() {
